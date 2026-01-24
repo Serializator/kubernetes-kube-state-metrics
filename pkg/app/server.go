@@ -321,6 +321,9 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 	discoveryOpts := []discovery.Opt{
 		discovery.WithFieldSelector(merged),
 	}
+	if opts.NamespaceLabelSelector != "" {
+		discoveryOpts = append(discoveryOpts, discovery.WithLabelSelector(opts.NamespaceLabelSelector))
+	}
 
 	namespaceDiscoverer := discovery.NewNamespaceDiscoverer(discoveryOpts...)
 
