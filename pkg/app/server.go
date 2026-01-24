@@ -226,6 +226,12 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 		return fmt.Errorf("failed to set up resources: %v", err)
 	}
 
+	kubeClient, err := util.CreateKubeClient(opts.Apiserver, opts.Kubeconfig)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+
 	namespaces := opts.Namespaces.GetNamespaces()
 	nsFieldSelector := namespaces.GetExcludeNSFieldSelector(opts.NamespacesDenylist)
 	var nodeFieldSelector string
@@ -274,10 +280,6 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 	proc.StartReaper()
 
 	storeBuilder.WithUtilOptions(opts)
-	kubeClient, err := util.CreateKubeClient(opts.Apiserver, opts.Kubeconfig)
-	if err != nil {
-		return fmt.Errorf("failed to create client: %v", err)
-	}
 	storeBuilder.WithKubeClient(kubeClient)
 
 	storeBuilder.WithSharding(opts.Shard, opts.TotalShards)
@@ -313,6 +315,32 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 	})
 
 	tlsConfig := opts.TLSConfig
+
+	ctxNamespaceDiscoverer, cancelNamespaceDiscoverer := context.WithCancel(ctx)
+
+	discoveryOpts := []discovery.Opt{
+		discovery.WithFieldSelector(merged),
+	}
+
+	namespaceDiscoverer := discovery.NewNamespaceDiscoverer(discoveryOpts...)
+
+	err = namespaceDiscoverer.Start(ctxNamespaceDiscoverer, kubeClient)
+	if err != nil {
+		return err 
+	}
+
+	 g.Add(func() error {
+		notifyChan := namespaceDiscoverer.PollForCacheUpdates(ctxNamespaceDiscoverer, 3 * time.Second)
+
+	 	for namespaces := range notifyChan {
+	 		storeBuilder.WithNamespaces(namespaces)
+	 		m.BuildWriters(ctxNamespaceDiscoverer)
+	 	}
+
+	 	return nil
+	 }, func(error) {
+	 	cancelNamespaceDiscoverer()
+	 })
 
 	// A nil CRS config implies that we need to hold off on all CRS operations.
 	if config != nil {
