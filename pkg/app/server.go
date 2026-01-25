@@ -231,6 +231,9 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
 
+	// TODO: do not start namespace discovery when it wants all namespaces
+	// TODO: do not start namespace discovery when a static list is used
+	// TODO: refactor GetExcludeNSFieldSelector as field selector on namespace discovery
 
 	namespaces := opts.Namespaces.GetNamespaces()
 	nsFieldSelector := namespaces.GetExcludeNSFieldSelector(opts.NamespacesDenylist)
@@ -431,6 +434,32 @@ func RunKubeStateMetrics(ctx context.Context, opts *options.Options) error {
 
 	klog.InfoS("Exited")
 	return nil
+}
+
+// configureNamespaceDiscovery will decide to either register namespaces dynamically or statically.
+func configureNamespaceDiscovery(opts *options.Options, storeBuilder *store.Builder) string {
+	isAllNamespaces := opts.Namespaces.IsAllNamespaces()
+	isLabelSelectorUsed := len(opts.NamespaceLabelSelector) > 0
+	isDenylistUsed := len(opts.NamespacesDenylist) > 0
+
+	if isLabelSelectorUsed || (isAllNamespaces && isDenylistUsed) {
+		result := "dynamic-filtered"
+		if isDenylistUsed {
+			// TODO: refactor this to append to label selector with metadata.name selectors
+			result = result + "-with-denylist"
+		}
+		if isLabelSelectorUsed {
+			// TODO: refactor to use WithLabelSelector on dynamic namespace discoverer
+			result = result + "-with-label-selector"
+		}
+		return result
+	}
+
+	if !isAllNamespaces && isDenylistUsed {
+			return "static-filtered-with-namespace-denylist"
+	}
+
+	return "static"
 }
 
 func configureResourcesAndMetrics(opts *options.Options, configFile []byte) *options.Options {

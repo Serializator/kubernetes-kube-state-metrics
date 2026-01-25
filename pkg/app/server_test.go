@@ -1074,3 +1074,90 @@ func TestConfigureResourcesAndMetrics_InvalidYAML(t *testing.T) {
 		t.Errorf("expected opts to be returned unchanged on invalid YAML")
 	}
 }
+
+func TestConfigureNamespaceDiscovery(t *testing.T) {
+	testCases := []struct{
+		desc string
+		opts func() *options.Options
+		expected string
+	}{
+		{
+			desc: "should use static namespaces only (1)",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{metav1.NamespaceAll}
+				return opts
+			},
+			expected: "static",
+		},
+		{
+			desc: "should use static namespaces only (2)",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{"default,foobar"}
+				return opts
+			},
+			expected: "static",
+		},
+		{
+			desc: "should use static namespaces, filtered by namespace denylist",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{"default,foobar"}
+				opts.NamespacesDenylist = []string{"foobar"}
+				return opts
+			},
+			expected: "static-filtered-with-namespace-denylist",
+		},
+		{
+			desc: "should use dynamic namespaces, filtered by label selector (1)",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{metav1.NamespaceAll}
+				opts.NamespaceLabelSelector = "foo=bar"
+				return opts
+			},
+			expected: "dynamic-filtered-with-label-selector",
+		},
+		{
+			desc: "should use dynamic namespaces, filtered by label selector (2)",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{"default,foobar"}
+				opts.NamespaceLabelSelector = "foo=bar"
+				return opts
+			},
+			expected: "dynamic-filtered-with-label-selector",
+		},
+		{
+			desc: "should use dynamic namespaces, filtered by namespace denylist",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{metav1.NamespaceAll}
+				opts.NamespacesDenylist = []string{"foobar"}
+				return opts
+			},
+			expected: "dynamic-filtered-with-denylist",
+		},
+		{
+			desc: "should use dynamic namespaces, filtered by label selector and namespace denylist",
+			opts: func() *options.Options {
+				opts := options.NewOptions()
+				opts.Namespaces = []string{metav1.NamespaceAll}
+				opts.NamespaceLabelSelector = "foo=bar"
+				opts.NamespacesDenylist = []string{"foobar"}
+				return opts
+			},
+			expected: "dynamic-filtered-with-denylist-with-label-selector",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := configureNamespaceDiscovery(tc.opts(), store.NewBuilder())
+			if got != tc.expected {
+				t.Errorf("expected %s, got %s", tc.expected, got)
+			}
+		})
+	}
+}
